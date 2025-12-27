@@ -6,11 +6,16 @@ import { DraftQuerySchema } from "@/lib/schemas";
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
+    const statusParam = searchParams.get("status");
+    const minScoreParam = searchParams.get("minScore");
+    const limitParam = searchParams.get("limit");
+    const offsetParam = searchParams.get("offset");
+
     const query = DraftQuerySchema.safeParse({
-      status: searchParams.get("status"),
-      minScore: searchParams.get("minScore"),
-      limit: searchParams.get("limit"),
-      offset: searchParams.get("offset"),
+      ...(statusParam !== null && { status: statusParam }),
+      ...(minScoreParam !== null && { minScore: minScoreParam }),
+      ...(limitParam !== null && { limit: limitParam }),
+      ...(offsetParam !== null && { offset: offsetParam }),
     });
 
     if (!query.success) {

@@ -6,9 +6,12 @@ import { JobQuerySchema } from "@/lib/schemas";
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
+    const statusParam = searchParams.get("status");
+    const limitParam = searchParams.get("limit");
+
     const query = JobQuerySchema.safeParse({
-      status: searchParams.get("status"),
-      limit: searchParams.get("limit"),
+      ...(statusParam !== null && { status: statusParam }),
+      ...(limitParam !== null && { limit: limitParam }),
     });
 
     if (!query.success) {
