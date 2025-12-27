@@ -10,9 +10,12 @@ import { CreateSourceSchema, SourceQuerySchema } from "@/lib/schemas";
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
+    const enabledParam = searchParams.get("enabled");
+    const typeParam = searchParams.get("type");
+
     const query = SourceQuerySchema.safeParse({
-      enabled: searchParams.get("enabled"),
-      type: searchParams.get("type"),
+      ...(enabledParam !== null && { enabled: enabledParam }),
+      ...(typeParam !== null && { type: typeParam }),
     });
 
     if (!query.success) {
