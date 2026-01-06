@@ -1,0 +1,210 @@
+{
+  "dashboard": {
+    "title": "GXVIS Business Metrics Dashboard",
+    "uid": "gxvis-business",
+    "tags": ["gxvis", "business", "kpi"],
+    "timezone": "Asia/Tokyo",
+    "refresh": "1m",
+    "time": {
+      "from": "now-24h",
+      "to": "now"
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "Draft Status Distribution",
+        "type": "piechart",
+        "gridPos": { "x": 0, "y": 0, "w": 8, "h": 8 },
+        "targets": [
+          {
+            "expr": "gxvis_drafts_by_status",
+            "legendFormat": "{{ status }}"
+          }
+        ],
+        "options": {
+          "pieType": "donut",
+          "displayLabels": ["name", "percent"]
+        }
+      },
+      {
+        "id": 2,
+        "title": "Drafts Generated (per hour)",
+        "type": "graph",
+        "gridPos": { "x": 8, "y": 0, "w": 16, "h": 8 },
+        "targets": [
+          {
+            "expr": "gxvis:drafts_generated:rate1h * 3600",
+            "legendFormat": "Drafts/hour"
+          },
+          {
+            "expr": "sum(rate(gxvis_draft_generation_total{status=\"error\"}[1h])) * 3600",
+            "legendFormat": "Failures/hour"
+          }
+        ],
+        "yaxes": [
+          { "label": "Drafts per hour", "format": "short" },
+          { "show": false }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "RSS Items Ingested (24h)",
+        "type": "stat",
+        "gridPos": { "x": 0, "y": 8, "w": 6, "h": 4 },
+        "targets": [
+          {
+            "expr": "sum(gxvis_ingested_items_last_24h)"
+          }
+        ],
+        "options": {
+          "graphMode": "area",
+          "colorMode": "value",
+          "unit": "short"
+        }
+      },
+      {
+        "id": 4,
+        "title": "Pending Drafts",
+        "type": "stat",
+        "gridPos": { "x": 6, "y": 8, "w": 6, "h": 4 },
+        "targets": [
+          {
+            "expr": "gxvis_drafts_by_status{status=\"pending\"}"
+          }
+        ],
+        "options": {
+          "graphMode": "area",
+          "colorMode": "value"
+        },
+        "thresholds": {
+          "mode": "absolute",
+          "steps": [
+            { "value": 0, "color": "red" },
+            { "value": 5, "color": "yellow" },
+            { "value": 10, "color": "green" }
+          ]
+        }
+      },
+      {
+        "id": 5,
+        "title": "Draft Approval Rate (24h)",
+        "type": "gauge",
+        "gridPos": { "x": 12, "y": 8, "w": 6, "h": 4 },
+        "targets": [
+          {
+            "expr": "gxvis:draft_approval_rate:24h * 100"
+          }
+        ],
+        "options": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100
+        },
+        "thresholds": {
+          "mode": "absolute",
+          "steps": [
+            { "value": 0, "color": "red" },
+            { "value": 30, "color": "yellow" },
+            { "value": 50, "color": "green" }
+          ]
+        }
+      },
+      {
+        "id": 6,
+        "title": "Draft Rejection Rate (24h)",
+        "type": "gauge",
+        "gridPos": { "x": 18, "y": 8, "w": 6, "h": 4 },
+        "targets": [
+          {
+            "expr": "gxvis:draft_rejection_rate:24h * 100"
+          }
+        ],
+        "options": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100
+        },
+        "thresholds": {
+          "mode": "absolute",
+          "steps": [
+            { "value": 0, "color": "green" },
+            { "value": 50, "color": "yellow" },
+            { "value": 70, "color": "red" }
+          ]
+        }
+      },
+      {
+        "id": 7,
+        "title": "Review Decisions (per hour)",
+        "type": "graph",
+        "gridPos": { "x": 0, "y": 12, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "gxvis:review_decisions:rate1h{action=\"approve\"} * 3600",
+            "legendFormat": "Approved"
+          },
+          {
+            "expr": "gxvis:review_decisions:rate1h{action=\"reject\"} * 3600",
+            "legendFormat": "Rejected"
+          },
+          {
+            "expr": "gxvis:review_decisions:rate1h{action=\"posted\"} * 3600",
+            "legendFormat": "Posted"
+          }
+        ],
+        "yaxes": [
+          { "label": "Decisions per hour", "format": "short" },
+          { "show": false }
+        ]
+      },
+      {
+        "id": 8,
+        "title": "Average Time to Review",
+        "type": "graph",
+        "gridPos": { "x": 12, "y": 12, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "gxvis:draft_review_duration:avg / 3600",
+            "legendFormat": "Avg review time (hours)"
+          }
+        ],
+        "yaxes": [
+          { "label": "Hours", "format": "h" },
+          { "show": false }
+        ]
+      },
+      {
+        "id": 9,
+        "title": "Drafts by Template (24h)",
+        "type": "bargauge",
+        "gridPos": { "x": 0, "y": 20, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "sum(increase(gxvis_drafts_generated_by_template_total[24h])) by (template_code)",
+            "legendFormat": "{{ template_code }}"
+          }
+        ],
+        "options": {
+          "orientation": "horizontal",
+          "displayMode": "gradient"
+        }
+      },
+      {
+        "id": 10,
+        "title": "Draft Edit Rate (% with edits)",
+        "type": "stat",
+        "gridPos": { "x": 12, "y": 20, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "gxvis:draft_edit_rate:24h * 100"
+          }
+        ],
+        "options": {
+          "graphMode": "area",
+          "colorMode": "value",
+          "unit": "percent"
+        }
+      }
+    ]
+  }
+}

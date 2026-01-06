@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 export type ApiSuccessResponse<T> = {
   ok: true;
   data: T;
+  meta?: Record<string, unknown>;
 };
 
 export type ApiErrorResponse = {
@@ -16,8 +17,12 @@ export type ApiErrorResponse = {
 
 export type ApiResponse<T> = ApiSuccessResponse<T> | ApiErrorResponse;
 
-export function successResponse<T>(data: T, status = 200): NextResponse<ApiSuccessResponse<T>> {
-  return NextResponse.json({ ok: true, data }, { status });
+export function successResponse<T>(
+  data: T,
+  meta?: Record<string, unknown>,
+  status = 200
+): NextResponse<ApiSuccessResponse<T>> {
+  return NextResponse.json({ ok: true, data, ...(meta && { meta }) }, { status });
 }
 
 export function errorResponse(

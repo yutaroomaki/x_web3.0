@@ -17,6 +17,16 @@ import {
   AlertTriangle,
 } from "lucide-react";
 
+type DraftVersion = {
+  id: string;
+  lengthCategory: "short" | "medium" | "long";
+  lengthLabel: string;
+  charCount: number;
+  status: string;
+  trendScore: number;
+  isCurrent: boolean;
+};
+
 type DraftDetail = {
   draft: {
     id: string;
@@ -55,6 +65,7 @@ type DraftDetail = {
     ctaDraft: string;
     emotionPlan: Record<string, number>;
   } | null;
+  versions: DraftVersion[];
 };
 
 export default function ReviewPage({
@@ -156,8 +167,27 @@ export default function ReviewPage({
     );
   }
 
-  const { draft, ingestItem, analysis } = data;
+  const { draft, ingestItem, analysis, versions } = data;
   const riskFlags = draft.riskFlags;
+
+  const handleVersionSwitch = (versionId: string) => {
+    if (versionId !== id) {
+      router.push(`/review/${versionId}`);
+    }
+  };
+
+  const getLengthBadgeColor = (category: string) => {
+    switch (category) {
+      case "short":
+        return "bg-green-100 text-green-700 border-green-300";
+      case "medium":
+        return "bg-yellow-100 text-yellow-700 border-yellow-300";
+      case "long":
+        return "bg-red-100 text-red-700 border-red-300";
+      default:
+        return "bg-gray-100 text-gray-700 border-gray-300";
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -187,6 +217,42 @@ export default function ReviewPage({
             {draft.status}
           </Badge>
         </div>
+
+        {/* Version Selector */}
+        {versions && versions.length > 1 && (
+          <Card className="mb-6">
+            <CardContent>
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-sm font-medium text-gray-700">文字数バージョンを選択:</span>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                {versions.map((version) => (
+                  <button
+                    key={version.id}
+                    onClick={() => handleVersionSwitch(version.id)}
+                    className={`px-4 py-2 rounded-lg border-2 transition-all ${
+                      version.isCurrent
+                        ? `${getLengthBadgeColor(version.lengthCategory)} ring-2 ring-offset-2 ring-blue-500`
+                        : `${getLengthBadgeColor(version.lengthCategory)} hover:ring-2 hover:ring-offset-1 hover:ring-gray-400`
+                    }`}
+                  >
+                    <div className="font-medium">{version.lengthLabel}</div>
+                    <div className="text-xs opacity-75">{version.charCount}字</div>
+                    {version.status !== "pending" && (
+                      <div className={`text-xs mt-1 ${
+                        version.status === "approved" ? "text-green-600" :
+                        version.status === "rejected" ? "text-red-600" :
+                        version.status === "posted" ? "text-blue-600" : ""
+                      }`}>
+                        {version.status}
+                      </div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Main Editor */}

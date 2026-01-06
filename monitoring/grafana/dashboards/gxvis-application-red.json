@@ -1,0 +1,156 @@
+{
+  "dashboard": {
+    "title": "GXVIS Application Dashboard (RED Metrics)",
+    "uid": "gxvis-app-red",
+    "tags": ["gxvis", "application", "red-metrics"],
+    "timezone": "Asia/Tokyo",
+    "refresh": "30s",
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "Request Rate (per second)",
+        "type": "graph",
+        "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "sum(gxvis:http_requests:rate5m) by (route)",
+            "legendFormat": "{{ route }}"
+          }
+        ],
+        "yaxes": [
+          { "label": "req/s", "format": "reqps" },
+          { "show": false }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Error Rate (%)",
+        "type": "graph",
+        "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "(1 - gxvis:http_success_rate:rate5m) * 100",
+            "legendFormat": "{{ route }}"
+          }
+        ],
+        "yaxes": [
+          { "label": "Error %", "format": "percent", "max": 100 },
+          { "show": false }
+        ],
+        "thresholds": [
+          { "value": 1, "colorMode": "custom", "fill": false, "line": true, "op": "gt", "lineColor": "orange" },
+          { "value": 5, "colorMode": "custom", "fill": false, "line": true, "op": "gt", "lineColor": "red" }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Response Duration (P50/P95/P99)",
+        "type": "graph",
+        "gridPos": { "x": 0, "y": 8, "w": 24, "h": 8 },
+        "targets": [
+          {
+            "expr": "gxvis:http_request_duration:p50",
+            "legendFormat": "P50 - {{ route }}"
+          },
+          {
+            "expr": "gxvis:http_request_duration:p95",
+            "legendFormat": "P95 - {{ route }}"
+          },
+          {
+            "expr": "gxvis:http_request_duration:p99",
+            "legendFormat": "P99 - {{ route }}"
+          }
+        ],
+        "yaxes": [
+          { "label": "Duration", "format": "s" },
+          { "show": false }
+        ],
+        "thresholds": [
+          { "value": 2, "colorMode": "custom", "fill": false, "line": true, "op": "gt", "lineColor": "orange" },
+          { "value": 5, "colorMode": "custom", "fill": false, "line": true, "op": "gt", "lineColor": "red" }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Active Connections",
+        "type": "stat",
+        "gridPos": { "x": 0, "y": 16, "w": 6, "h": 4 },
+        "targets": [
+          {
+            "expr": "gxvis_http_active_connections"
+          }
+        ],
+        "options": {
+          "graphMode": "area",
+          "colorMode": "value"
+        }
+      },
+      {
+        "id": 5,
+        "title": "Total Requests (1h)",
+        "type": "stat",
+        "gridPos": { "x": 6, "y": 16, "w": 6, "h": 4 },
+        "targets": [
+          {
+            "expr": "sum(increase(gxvis_http_requests_total[1h]))"
+          }
+        ],
+        "options": {
+          "graphMode": "area",
+          "colorMode": "value"
+        }
+      },
+      {
+        "id": 6,
+        "title": "5xx Errors (1h)",
+        "type": "stat",
+        "gridPos": { "x": 12, "y": 16, "w": 6, "h": 4 },
+        "targets": [
+          {
+            "expr": "sum(increase(gxvis_http_requests_total{status=~\"5..\"}[1h]))"
+          }
+        ],
+        "options": {
+          "graphMode": "area",
+          "colorMode": "value"
+        },
+        "thresholds": {
+          "mode": "absolute",
+          "steps": [
+            { "value": 0, "color": "green" },
+            { "value": 10, "color": "yellow" },
+            { "value": 50, "color": "red" }
+          ]
+        }
+      },
+      {
+        "id": 7,
+        "title": "P95 Latency",
+        "type": "stat",
+        "gridPos": { "x": 18, "y": 16, "w": 6, "h": 4 },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(gxvis_http_request_duration_seconds_bucket[5m])) by (le))"
+          }
+        ],
+        "options": {
+          "graphMode": "area",
+          "colorMode": "value",
+          "unit": "s"
+        },
+        "thresholds": {
+          "mode": "absolute",
+          "steps": [
+            { "value": 0, "color": "green" },
+            { "value": 1, "color": "yellow" },
+            { "value": 2, "color": "red" }
+          ]
+        }
+      }
+    ]
+  }
+}

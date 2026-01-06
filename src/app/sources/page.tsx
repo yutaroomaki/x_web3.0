@@ -6,7 +6,7 @@ import { Card, CardHeader, CardContent, CardFooter } from "@/components/Card";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import { formatDate } from "@/lib/utils";
-import { Plus, RefreshCw, X, Database, Rss, Youtube, Twitter } from "lucide-react";
+import { Plus, RefreshCw, X, Database, Rss, Youtube, Twitter, Download, CheckCircle, AlertCircle } from "lucide-react";
 
 type Source = {
   id: string;
@@ -25,10 +25,27 @@ const sourceTypeIcons: Record<string, React.ElementType> = {
   MANUAL: Database,
 };
 
+type FetchResult = {
+  source: string;
+  fetched: number;
+  new: number;
+  errors: string[];
+};
+
+type GenerateResult = {
+  processed: number;
+  generated: number;
+  skipped: number;
+  errors: string[];
+};
+
 export default function SourcesPage() {
   const [sources, setSources] = useState<Source[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [fetching, setFetching] = useState(false);
+  const [fetchResults, setFetchResults] = useState<FetchResult[] | null>(null);
+  const [generateResult, setGenerateResult] = useState<GenerateResult | null>(null);
   const [formData, setFormData] = useState({
     type: "RSS",
     name: "",
@@ -54,6 +71,28 @@ export default function SourcesPage() {
   useEffect(() => {
     fetchSources();
   }, []);
+
+  const handleFetchRSS = async () => {
+    setFetching(true);
+    setFetchResults(null);
+    setGenerateResult(null);
+    try {
+      const res = await fetch("/api/fetch-rss", { method: "POST" });
+      const data = await res.json();
+      if (data.ok) {
+        setFetchResults(data.data.results);
+        if (data.data.draftsGenerated) {
+          setGenerateResult(data.data.draftsGenerated);
+        }
+        // Refresh sources list
+        fetchSources();
+      }
+    } catch (error) {
+      console.error("Failed to fetch RSS:", error);
+    } finally {
+      setFetching(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -90,6 +129,17 @@ export default function SourcesPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              onClick={handleFetchRSS}
+              disabled={fetching}
+              className="bg-green-600 hover:bg-green-700 text-white"
+            >
+              <Download
+                className={`w-4 h-4 mr-2 ${fetching ? "animate-bounce" : ""}`}
+              />
+              {fetching ? "取得中..." : "ニュース取得"}
+            </Button>
             <Button variant="secondary" onClick={fetchSources} disabled={loading}>
               <RefreshCw
                 className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`}
@@ -102,6 +152,44 @@ export default function SourcesPage() {
             </Button>
           </div>
         </div>
+
+        {/* Fetch Results */}
+        {fetchResults && (
+          <Card className="mb-6 border-green-200 bg-green-50">
+            <CardContent className="pt-4">
+              <div className="flex items-center gap-2 mb-3">
+                <CheckCircle className="w-5 h-5 text-green-600" />
+                <h3 className="font-semibold text-green-800">取得完了</h3>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                {fetchResults.map((result) => (
+                  <div key={result.source} className="bg-white rounded-lg p-3">
+                    <div className="text-sm font-medium text-gray-900">{result.source}</div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      取得: {result.fetched}件 / 新規: <span className="text-green-600 font-semibold">{result.new}件</span>
+                    </div>
+                    {result.errors.length > 0 && (
+                      <div className="text-xs text-red-500 mt-1 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3" />
+                        エラーあり
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+              {generateResult && (
+                <div className="bg-blue-100 rounded-lg p-3 border border-blue-200">
+                  <div className="text-sm font-medium text-blue-800">
+                    📝 ドラフト自動生成: <span className="text-blue-900 font-bold">{generateResult.generated}件</span> 作成
+                  </div>
+                  <div className="text-xs text-blue-600 mt-1">
+                    Draftsページで確認・編集できます
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Sources Grid */}
         {loading ? (

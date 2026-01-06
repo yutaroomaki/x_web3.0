@@ -1,0 +1,256 @@
+{
+  "dashboard": {
+    "title": "GXVIS SLO Dashboard",
+    "uid": "gxvis-slo",
+    "tags": ["gxvis", "slo", "error-budget"],
+    "timezone": "Asia/Tokyo",
+    "refresh": "1m",
+    "time": {
+      "from": "now-30d",
+      "to": "now"
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "SLO: Availability (99.9% target)",
+        "type": "gauge",
+        "gridPos": { "x": 0, "y": 0, "w": 6, "h": 8 },
+        "targets": [
+          {
+            "expr": "avg(up{job=\"gxvis-app\"}) * 100"
+          }
+        ],
+        "options": {
+          "unit": "percent",
+          "min": 99,
+          "max": 100,
+          "showThresholdLabels": true,
+          "showThresholdMarkers": true
+        },
+        "thresholds": {
+          "mode": "absolute",
+          "steps": [
+            { "value": 99, "color": "red" },
+            { "value": 99.5, "color": "yellow" },
+            { "value": 99.9, "color": "green" }
+          ]
+        }
+      },
+      {
+        "id": 2,
+        "title": "SLO: Error Rate (99.5% success target)",
+        "type": "gauge",
+        "gridPos": { "x": 6, "y": 0, "w": 6, "h": 8 },
+        "targets": [
+          {
+            "expr": "gxvis:sli:error_rate * 100"
+          }
+        ],
+        "options": {
+          "unit": "percent",
+          "min": 99,
+          "max": 100
+        },
+        "thresholds": {
+          "mode": "absolute",
+          "steps": [
+            { "value": 99, "color": "red" },
+            { "value": 99.5, "color": "green" }
+          ]
+        }
+      },
+      {
+        "id": 3,
+        "title": "SLO: Draft Generation (95% success target)",
+        "type": "gauge",
+        "gridPos": { "x": 12, "y": 0, "w": 6, "h": 8 },
+        "targets": [
+          {
+            "expr": "gxvis:sli:draft_generation * 100"
+          }
+        ],
+        "options": {
+          "unit": "percent",
+          "min": 90,
+          "max": 100
+        },
+        "thresholds": {
+          "mode": "absolute",
+          "steps": [
+            { "value": 90, "color": "red" },
+            { "value": 95, "color": "green" }
+          ]
+        }
+      },
+      {
+        "id": 4,
+        "title": "SLO: RSS Fetch (90% success target)",
+        "type": "gauge",
+        "gridPos": { "x": 18, "y": 0, "w": 6, "h": 8 },
+        "targets": [
+          {
+            "expr": "gxvis:sli:rss_fetch * 100"
+          }
+        ],
+        "options": {
+          "unit": "percent",
+          "min": 80,
+          "max": 100
+        },
+        "thresholds": {
+          "mode": "absolute",
+          "steps": [
+            { "value": 80, "color": "red" },
+            { "value": 90, "color": "green" }
+          ]
+        }
+      },
+      {
+        "id": 5,
+        "title": "Error Budget Burn Rate (1h window)",
+        "type": "graph",
+        "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "(1 - avg(up{job=\"gxvis-app\"}[1h])) / 0.001",
+            "legendFormat": "Availability (14.4x threshold)"
+          },
+          {
+            "expr": "(sum(rate(gxvis_http_requests_total{status=~\"5..\"}[1h])) / sum(rate(gxvis_http_requests_total[1h]))) / 0.005",
+            "legendFormat": "Error Rate (14.4x threshold)"
+          }
+        ],
+        "yaxes": [
+          { "label": "Burn Rate Multiplier", "format": "short" },
+          { "show": false }
+        ],
+        "thresholds": [
+          { "value": 14.4, "colorMode": "critical", "fill": true, "line": true, "op": "gt" }
+        ]
+      },
+      {
+        "id": 6,
+        "title": "Error Budget Burn Rate (6h window)",
+        "type": "graph",
+        "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "(1 - avg(up{job=\"gxvis-app\"}[6h])) / 0.001",
+            "legendFormat": "Availability (6x threshold)"
+          },
+          {
+            "expr": "(sum(rate(gxvis_http_requests_total{status=~\"5..\"}[6h])) / sum(rate(gxvis_http_requests_total[6h]))) / 0.005",
+            "legendFormat": "Error Rate (6x threshold)"
+          }
+        ],
+        "yaxes": [
+          { "label": "Burn Rate Multiplier", "format": "short" },
+          { "show": false }
+        ],
+        "thresholds": [
+          { "value": 6, "colorMode": "critical", "fill": true, "line": true, "op": "gt" }
+        ]
+      },
+      {
+        "id": 7,
+        "title": "30-Day Availability Trend",
+        "type": "graph",
+        "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "avg_over_time(up{job=\"gxvis-app\"}[1d]) * 100",
+            "legendFormat": "Daily Availability %"
+          }
+        ],
+        "yaxes": [
+          { "label": "Availability %", "format": "percent", "min": 99, "max": 100 },
+          { "show": false }
+        ],
+        "thresholds": [
+          { "value": 99.9, "colorMode": "custom", "fill": false, "line": true, "op": "lt", "lineColor": "red" }
+        ]
+      },
+      {
+        "id": 8,
+        "title": "30-Day Error Rate Trend",
+        "type": "graph",
+        "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "(1 - (sum(rate(gxvis_http_requests_total{status!~\"5..\"}[1d])) / sum(rate(gxvis_http_requests_total[1d])))) * 100",
+            "legendFormat": "Daily Error Rate %"
+          }
+        ],
+        "yaxes": [
+          { "label": "Error Rate %", "format": "percent", "min": 0 },
+          { "show": false }
+        ],
+        "thresholds": [
+          { "value": 0.5, "colorMode": "custom", "fill": false, "line": true, "op": "gt", "lineColor": "red" }
+        ]
+      },
+      {
+        "id": 9,
+        "title": "Error Budget Remaining (30d)",
+        "type": "stat",
+        "gridPos": { "x": 0, "y": 24, "w": 8, "h": 6 },
+        "targets": [
+          {
+            "expr": "(1 - ((1 - avg(up{job=\"gxvis-app\"}[30d])) / 0.001)) * 100"
+          }
+        ],
+        "options": {
+          "graphMode": "area",
+          "colorMode": "value",
+          "unit": "percent"
+        },
+        "thresholds": {
+          "mode": "absolute",
+          "steps": [
+            { "value": 0, "color": "red" },
+            { "value": 25, "color": "yellow" },
+            { "value": 50, "color": "green" }
+          ]
+        }
+      },
+      {
+        "id": 10,
+        "title": "Estimated Days Until Budget Exhaustion",
+        "type": "stat",
+        "gridPos": { "x": 8, "y": 24, "w": 8, "h": 6 },
+        "targets": [
+          {
+            "expr": "30 * ((1 - avg(up{job=\"gxvis-app\"}[30d])) / 0.001) / ((1 - avg(up{job=\"gxvis-app\"}[1d])) / 0.001)"
+          }
+        ],
+        "options": {
+          "graphMode": "none",
+          "colorMode": "value",
+          "unit": "days"
+        },
+        "thresholds": {
+          "mode": "absolute",
+          "steps": [
+            { "value": 0, "color": "red" },
+            { "value": 7, "color": "yellow" },
+            { "value": 30, "color": "green" }
+          ]
+        }
+      },
+      {
+        "id": 11,
+        "title": "Active SLO Alerts",
+        "type": "table",
+        "gridPos": { "x": 16, "y": 24, "w": 8, "h": 6 },
+        "targets": [
+          {
+            "expr": "ALERTS{slo=~\".*\", alertstate=\"firing\"}"
+          }
+        ],
+        "options": {
+          "showHeader": true
+        }
+      }
+    ]
+  }
+}

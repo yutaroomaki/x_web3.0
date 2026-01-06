@@ -46,3 +46,10 @@ next-env.d.ts
 # Prisma
 prisma/*.db
 prisma/*.db-journal
+# local env
+.env
+
+# local sqlite/db dumps
+prisma/*.db
+prisma/*.db.*
+prisma/*dump*.sql

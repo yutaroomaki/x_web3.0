@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return successResponse({ id: source.id }, 201);
+    return successResponse({ id: source.id }, undefined, 201);
   } catch (error) {
     console.error("Failed to create source:", error);
     return serverErrorResponse();

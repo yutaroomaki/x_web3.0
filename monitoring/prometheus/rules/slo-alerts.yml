@@ -1,0 +1,309 @@
+# GXVIS SLO-Based Alert Rules
+# Multi-window multi-burn-rate alerting for error budget tracking
+
+groups:
+#═════════════════════════════════════════════════════════════════
+# SLO: Availability (99.9% uptime target)
+# Error Budget: 0.1% = 43.2 minutes/month downtime
+#═════════════════════════════════════════════════════════════════
+- name: gxvis_slo_availability
+  interval: 1m
+  rules:
+  # Fast Burn Alert (1h window, 14.4x burn rate)
+  - alert: GXVISAvailabilityErrorBudgetBurnFast
+    expr: |
+      (
+        1 - avg(up{job="gxvis-app"}[1h])
+      ) > 14.4 * 0.001  # 14.4x burn rate for 99.9% SLO
+    for: 5m
+    labels:
+      severity: critical
+      team: sre
+      slo: "availability"
+      slo_target: "99.9%"
+      window: "1h"
+      runbook: https://docs.gxvis.com/runbooks/slo-availability-fast-burn
+    annotations:
+      summary: "Fast availability error budget burn (1h window)"
+      description: |
+        Burning availability error budget 14.4x faster than sustainable rate
+        Current availability: {{ $value | humanizePercentage }}
+        At this rate, monthly error budget will be exhausted in 2 hours
+      impact: "Critical service availability degradation"
+
+  # Slow Burn Alert (6h window, 6x burn rate)
+  - alert: GXVISAvailabilityErrorBudgetBurnSlow
+    expr: |
+      (
+        1 - avg(up{job="gxvis-app"}[6h])
+      ) > 6 * 0.001  # 6x burn rate for 99.9% SLO
+    for: 30m
+    labels:
+      severity: warning
+      team: sre
+      slo: "availability"
+      slo_target: "99.9%"
+      window: "6h"
+      runbook: https://docs.gxvis.com/runbooks/slo-availability-slow-burn
+    annotations:
+      summary: "Slow availability error budget burn (6h window)"
+      description: |
+        Burning availability error budget 6x faster than sustainable rate
+        Current 6h availability: {{ $value | humanizePercentage }}
+        Action needed to prevent SLO breach
+
+  # Error Budget Exhausted (30-day SLO)
+  - alert: GXVISAvailabilityErrorBudgetExhausted
+    expr: |
+      (
+        1 - avg(up{job="gxvis-app"}[30d])
+      ) > 0.001  # 99.9% SLO = 0.1% error budget
+    for: 1h
+    labels:
+      severity: critical
+      team: sre
+      slo: "availability"
+      slo_target: "99.9%"
+      window: "30d"
+      runbook: https://docs.gxvis.com/runbooks/slo-availability-exhausted
+    annotations:
+      summary: "30-day availability error budget exhausted"
+      description: |
+        Availability {{ $value | humanizePercentage }} exceeds 99.9% SLO (0.1% budget)
+        Monthly SLO breached - feature freeze until budget recovers
+
+#═════════════════════════════════════════════════════════════════
+# SLO: Error Rate (99.5% success rate target)
+# Error Budget: 0.5% = ~216 failed requests per 43,200 requests
+#═════════════════════════════════════════════════════════════════
+- name: gxvis_slo_error_rate
+  interval: 1m
+  rules:
+  # Fast Burn Alert (1h window)
+  - alert: GXVISErrorRateBurnFast
+    expr: |
+      (
+        sum(rate(gxvis_http_requests_total{status=~"5.."}[1h]))
+        /
+        sum(rate(gxvis_http_requests_total[1h]))
+      ) > 14.4 * 0.005  # 14.4x burn rate for 99.5% SLO
+    for: 5m
+    labels:
+      severity: critical
+      team: backend
+      slo: "error_rate"
+      slo_target: "99.5%"
+      window: "1h"
+      runbook: https://docs.gxvis.com/runbooks/slo-error-rate-fast-burn
+    annotations:
+      summary: "Fast error budget burn detected (1h window)"
+      description: |
+        Error rate {{ $value | humanizePercentage }} is 14.4x above sustainable rate
+        Current 1h error rate exceeds threshold
+        Immediate investigation required
+
+  # Slow Burn Alert (6h window)
+  - alert: GXVISErrorRateBurnSlow
+    expr: |
+      (
+        sum(rate(gxvis_http_requests_total{status=~"5.."}[6h]))
+        /
+        sum(rate(gxvis_http_requests_total[6h]))
+      ) > 6 * 0.005  # 6x burn rate for 99.5% SLO
+    for: 30m
+    labels:
+      severity: warning
+      team: backend
+      slo: "error_rate"
+      slo_target: "99.5%"
+      window: "6h"
+      runbook: https://docs.gxvis.com/runbooks/slo-error-rate-slow-burn
+    annotations:
+      summary: "Slow error budget burn detected (6h window)"
+      description: |
+        Error rate {{ $value | humanizePercentage }} is 6x above sustainable rate
+        Review error logs and implement fixes
+
+  # Error Budget Exhausted (30-day)
+  - alert: GXVISErrorRateBudgetExhausted
+    expr: |
+      (
+        sum(rate(gxvis_http_requests_total{status=~"5.."}[30d]))
+        /
+        sum(rate(gxvis_http_requests_total[30d]))
+      ) > 0.005  # 99.5% SLO = 0.5% error budget
+    for: 1h
+    labels:
+      severity: critical
+      team: sre
+      slo: "error_rate"
+      slo_target: "99.5%"
+      window: "30d"
+      runbook: https://docs.gxvis.com/runbooks/slo-error-rate-exhausted
+    annotations:
+      summary: "30-day error budget exhausted"
+      description: |
+        Error rate {{ $value | humanizePercentage }} exceeds 99.5% SLO (0.5% budget)
+        Stop new feature deployments until error rate improves
+
+#═════════════════════════════════════════════════════════════════
+# SLO: Latency (P95 < 2s for 95% of requests)
+#═════════════════════════════════════════════════════════════════
+- name: gxvis_slo_latency
+  interval: 1m
+  rules:
+  # Fast Burn Alert (1h window)
+  - alert: GXVISLatencyBurnFast
+    expr: |
+      (
+        histogram_quantile(0.95,
+          sum(rate(gxvis_http_request_duration_seconds_bucket{route=~"/api/.*"}[1h])) by (le)
+        ) > 2
+      )
+    for: 5m
+    labels:
+      severity: warning
+      team: backend
+      slo: "latency"
+      slo_target: "P95 < 2s"
+      window: "1h"
+      runbook: https://docs.gxvis.com/runbooks/slo-latency-fast-burn
+    annotations:
+      summary: "API latency P95 exceeds 2s (1h window)"
+      description: |
+        P95 latency {{ $value }}s exceeds 2s threshold
+        User experience degraded - investigate slow endpoints
+
+  # Slow Burn Alert (6h window)
+  - alert: GXVISLatencyBurnSlow
+    expr: |
+      (
+        histogram_quantile(0.95,
+          sum(rate(gxvis_http_request_duration_seconds_bucket{route=~"/api/.*"}[6h])) by (le)
+        ) > 2
+      )
+    for: 30m
+    labels:
+      severity: warning
+      team: backend
+      slo: "latency"
+      slo_target: "P95 < 2s"
+      window: "6h"
+      runbook: https://docs.gxvis.com/runbooks/slo-latency-slow-burn
+    annotations:
+      summary: "API latency P95 consistently exceeds 2s (6h window)"
+      description: |
+        P95 latency {{ $value }}s consistently above 2s threshold
+        Performance optimization required
+
+#═════════════════════════════════════════════════════════════════
+# SLO: Draft Generation Success Rate (95% target)
+# Core business function - Article 2.2
+#═════════════════════════════════════════════════════════════════
+- name: gxvis_slo_draft_generation
+  interval: 2m
+  rules:
+  # Fast Burn Alert (1h window)
+  - alert: GXVISDraftGenerationBurnFast
+    expr: |
+      (
+        1 - (
+          sum(rate(gxvis_draft_generation_total{status="success"}[1h]))
+          /
+          sum(rate(gxvis_draft_generation_total[1h]))
+        )
+      ) > 14.4 * 0.05  # 14.4x burn rate for 95% SLO
+    for: 10m
+    labels:
+      severity: critical
+      team: backend
+      slo: "draft_generation"
+      slo_target: "95%"
+      window: "1h"
+      runbook: https://docs.gxvis.com/runbooks/slo-draft-generation-fast-burn
+    annotations:
+      summary: "Draft generation failure rate too high (1h window)"
+      description: |
+        Draft generation success rate {{ $value | humanizePercentage }} is below threshold
+        Core business function impaired - check AI API and pipeline
+      impact: "Article 2.2: System cannot generate drafts"
+
+  # Slow Burn Alert (6h window)
+  - alert: GXVISDraftGenerationBurnSlow
+    expr: |
+      (
+        1 - (
+          sum(rate(gxvis_draft_generation_total{status="success"}[6h]))
+          /
+          sum(rate(gxvis_draft_generation_total[6h]))
+        )
+      ) > 6 * 0.05  # 6x burn rate for 95% SLO
+    for: 30m
+    labels:
+      severity: warning
+      team: backend
+      slo: "draft_generation"
+      slo_target: "95%"
+      window: "6h"
+      runbook: https://docs.gxvis.com/runbooks/slo-draft-generation-slow-burn
+    annotations:
+      summary: "Draft generation quality degraded (6h window)"
+      description: |
+        Draft generation success rate {{ $value | humanizePercentage }} consistently low
+        Review generation logic and AI model performance
+
+#═════════════════════════════════════════════════════════════════
+# SLO: RSS Feed Fetch Success Rate (90% target)
+# Input pipeline - Article 5.2
+#═════════════════════════════════════════════════════════════════
+- name: gxvis_slo_rss_fetch
+  interval: 2m
+  rules:
+  # Fast Burn Alert (1h window)
+  - alert: GXVISRSSFetchBurnFast
+    expr: |
+      (
+        1 - (
+          sum(rate(gxvis_rss_fetch_total{status="success"}[1h]))
+          /
+          sum(rate(gxvis_rss_fetch_total[1h]))
+        )
+      ) > 14.4 * 0.1  # 14.4x burn rate for 90% SLO
+    for: 10m
+    labels:
+      severity: warning
+      team: backend
+      slo: "rss_fetch"
+      slo_target: "90%"
+      window: "1h"
+      runbook: https://docs.gxvis.com/runbooks/slo-rss-fetch-fast-burn
+    annotations:
+      summary: "RSS fetch failure rate too high (1h window)"
+      description: |
+        RSS fetch success rate {{ $value | humanizePercentage }} is below 90%
+        Check feed availability and network connectivity
+      impact: "Article 5.2: Input pipeline degraded"
+
+  # Slow Burn Alert (6h window)
+  - alert: GXVISRSSFetchBurnSlow
+    expr: |
+      (
+        1 - (
+          sum(rate(gxvis_rss_fetch_total{status="success"}[6h]))
+          /
+          sum(rate(gxvis_rss_fetch_total[6h]))
+        )
+      ) > 6 * 0.1  # 6x burn rate for 90% SLO
+    for: 30m
+    labels:
+      severity: warning
+      team: backend
+      slo: "rss_fetch"
+      slo_target: "90%"
+      window: "6h"
+      runbook: https://docs.gxvis.com/runbooks/slo-rss-fetch-slow-burn
+    annotations:
+      summary: "RSS fetch reliability degraded (6h window)"
+      description: |
+        RSS fetch success rate {{ $value | humanizePercentage }} consistently below 90%
+        Review feed URLs and consider removing unreliable sources

@@ -36,6 +36,63 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return notFoundResponse("Draft not found");
     }
 
+    // Find sibling versions (same source URL)
+    const siblingDrafts = await prisma.draftPost.findMany({
+      where: {
+        ingestItemId: draft.ingestItemId,
+        id: { not: draft.id },
+      },
+      select: {
+        id: true,
+        postText: true,
+        status: true,
+        trendScore: true,
+        title: true,
+      },
+      orderBy: { createdAt: "asc" },
+    });
+
+    // Helper to get length category
+    const getLengthCategory = (text: string): "short" | "medium" | "long" => {
+      const len = text.length;
+      if (len < 500) return "short";
+      if (len < 1000) return "medium";
+      return "long";
+    };
+
+    const getLengthLabel = (category: "short" | "medium" | "long"): string => {
+      switch (category) {
+        case "short": return "200-400字";
+        case "medium": return "500-1000字";
+        case "long": return "1000字以上";
+      }
+    };
+
+    // Format all versions including current
+    const allVersions = [
+      {
+        id: draft.id,
+        lengthCategory: getLengthCategory(draft.postText),
+        lengthLabel: getLengthLabel(getLengthCategory(draft.postText)),
+        charCount: draft.postText.length,
+        status: draft.status,
+        trendScore: draft.trendScore,
+        isCurrent: true,
+      },
+      ...siblingDrafts.map((s) => ({
+        id: s.id,
+        lengthCategory: getLengthCategory(s.postText),
+        lengthLabel: getLengthLabel(getLengthCategory(s.postText)),
+        charCount: s.postText.length,
+        status: s.status,
+        trendScore: s.trendScore,
+        isCurrent: false,
+      })),
+    ].sort((a, b) => {
+      const order = { short: 0, medium: 1, long: 2 };
+      return order[a.lengthCategory] - order[b.lengthCategory];
+    });
+
     const response = {
       draft: {
         id: draft.id,
@@ -75,6 +132,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           }
         : null,
       recentDecisions: draft.reviewDecisions,
+      versions: allVersions,
     };
 
     return successResponse(response);

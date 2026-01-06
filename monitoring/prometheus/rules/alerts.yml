@@ -1,0 +1,361 @@
+# GXVIS Alert Rules
+# Aligned with GXVIS constitution and business requirements
+
+groups:
+#═════════════════════════════════════════════════════════════════
+# Application Alerts (RED Metrics)
+#═════════════════════════════════════════════════════════════════
+- name: gxvis_application_alerts
+  interval: 30s
+  rules:
+  # High Error Rate (> 5%)
+  - alert: GXVISHighErrorRate
+    expr: |
+      (
+        sum(rate(gxvis_http_requests_total{status=~"5.."}[5m])) by (service)
+        /
+        sum(rate(gxvis_http_requests_total[5m])) by (service)
+      ) > 0.05
+    for: 5m
+    labels:
+      severity: critical
+      team: backend
+      component: api
+      runbook: https://docs.gxvis.com/runbooks/high-error-rate
+    annotations:
+      summary: "High error rate for {{ $labels.service }}"
+      description: "{{ $labels.service }} has {{ $value | humanizePercentage }} error rate (threshold: 5%)\nThis violates SLO requirements."
+      dashboard: "https://grafana.gxvis.com/d/gxvis-app-dashboard"
+      impact: "Users may experience failed requests and degraded service"
+
+  # High Latency P95 (> 2s for API endpoints)
+  - alert: GXVISHighLatencyP95
+    expr: |
+      histogram_quantile(0.95,
+        sum(rate(gxvis_http_request_duration_seconds_bucket{route=~"/api/.*"}[5m])) by (route, le)
+      ) > 2
+    for: 10m
+    labels:
+      severity: warning
+      team: backend
+      component: api
+      runbook: https://docs.gxvis.com/runbooks/high-latency
+    annotations:
+      summary: "High P95 latency for {{ $labels.route }}"
+      description: "{{ $labels.route }} P95 latency is {{ $value }}s (threshold: 2s)\nThis may impact user experience."
+
+  # Service Down
+  - alert: GXVISServiceDown
+    expr: up{job="gxvis-app"} == 0
+    for: 1m
+    labels:
+      severity: critical
+      team: platform
+      component: infrastructure
+      runbook: https://docs.gxvis.com/runbooks/service-down
+    annotations:
+      summary: "GXVIS service {{ $labels.instance }} is down"
+      description: "{{ $labels.instance }} has been down for more than 1 minute\nImmediate action required!"
+      impact: "Complete service outage - all functionality unavailable"
+
+  # API Endpoint Not Responding
+  - alert: GXVISAPIEndpointDown
+    expr: probe_success{job="blackbox"} == 0
+    for: 2m
+    labels:
+      severity: critical
+      team: backend
+      component: api
+      runbook: https://docs.gxvis.com/runbooks/endpoint-down
+    annotations:
+      summary: "GXVIS endpoint {{ $labels.instance }} is not responding"
+      description: "Health check failed for {{ $labels.instance }} for 2 minutes"
+      impact: "Specific endpoint unavailable"
+
+#═════════════════════════════════════════════════════════════════
+# RSS Feed Fetching Alerts
+#═════════════════════════════════════════════════════════════════
+- name: gxvis_rss_alerts
+  interval: 1m
+  rules:
+  # RSS Fetch Failures
+  - alert: GXVISRSSFetchFailureRate
+    expr: |
+      (
+        sum(rate(gxvis_rss_fetch_total{status="error"}[30m])) by (feed_name)
+        /
+        sum(rate(gxvis_rss_fetch_total[30m])) by (feed_name)
+      ) > 0.3
+    for: 10m
+    labels:
+      severity: warning
+      team: backend
+      component: rss_fetcher
+      runbook: https://docs.gxvis.com/runbooks/rss-fetch-failure
+    annotations:
+      summary: "High RSS fetch failure rate for {{ $labels.feed_name }}"
+      description: "{{ $labels.feed_name }} has {{ $value | humanizePercentage }} failure rate over 30min\nCheck feed availability and network connectivity."
+
+  # No New RSS Items (Possible feed issue)
+  - alert: GXVISNoNewRSSItems
+    expr: |
+      sum(increase(gxvis_rss_items_fetched_total{is_new="true"}[6h])) == 0
+      and
+      sum(increase(gxvis_rss_items_fetched_total{is_new="true"}[6h] offset 6h)) > 0
+    for: 30m
+    labels:
+      severity: warning
+      team: backend
+      component: rss_fetcher
+      runbook: https://docs.gxvis.com/runbooks/no-new-rss-items
+    annotations:
+      summary: "No new RSS items fetched in 6 hours"
+      description: "No new items ingested in 6h, but items were fetched 6h ago\nCheck if feeds are publishing new content or if deduplication is too aggressive."
+
+  # RSS Fetch Duration Too High
+  - alert: GXVISRSSFetchSlow
+    expr: |
+      histogram_quantile(0.95,
+        sum(rate(gxvis_rss_fetch_duration_seconds_bucket[10m])) by (feed_name, le)
+      ) > 30
+    for: 15m
+    labels:
+      severity: warning
+      team: backend
+      component: rss_fetcher
+    annotations:
+      summary: "RSS fetch duration too high for {{ $labels.feed_name }}"
+      description: "{{ $labels.feed_name }} P95 fetch duration is {{ $value }}s (threshold: 30s)\nCheck feed responsiveness and network latency."
+
+#═════════════════════════════════════════════════════════════════
+# Draft Generation Alerts (Core Business Logic)
+#═════════════════════════════════════════════════════════════════
+- name: gxvis_draft_generation_alerts
+  interval: 1m
+  rules:
+  # Draft Generation Failure Rate
+  - alert: GXVISDraftGenerationFailureRate
+    expr: |
+      (
+        sum(rate(gxvis_draft_generation_total{status="error"}[30m]))
+        /
+        sum(rate(gxvis_draft_generation_total[30m]))
+      ) > 0.2
+    for: 10m
+    labels:
+      severity: critical
+      team: backend
+      component: draft_generator
+      runbook: https://docs.gxvis.com/runbooks/draft-generation-failure
+    annotations:
+      summary: "High draft generation failure rate"
+      description: "Draft generation has {{ $value | humanizePercentage }} failure rate over 30min\nCheck AI API connectivity (AIT42) and error logs."
+      impact: "Article 2.2: System cannot generate drafts - core functionality impaired"
+
+  # Draft Generation Too Slow (> 30s P95)
+  - alert: GXVISDraftGenerationSlow
+    expr: |
+      histogram_quantile(0.95,
+        sum(rate(gxvis_draft_generation_duration_seconds_bucket[10m])) by (template_type, le)
+      ) > 30
+    for: 15m
+    labels:
+      severity: warning
+      team: backend
+      component: draft_generator
+    annotations:
+      summary: "Draft generation P95 duration too high"
+      description: "P95 generation time is {{ $value }}s (threshold: 30s)\nCheck AI API performance and consider increasing timeout limits."
+
+  # No Drafts Generated (Possible pipeline issue)
+  - alert: GXVISNoDraftsGenerated
+    expr: |
+      sum(increase(gxvis_draft_generation_total[1h])) == 0
+      and
+      sum(increase(gxvis_rss_items_fetched_total{is_new="true"}[1h])) > 0
+    for: 30m
+    labels:
+      severity: critical
+      team: backend
+      component: draft_generator
+      runbook: https://docs.gxvis.com/runbooks/no-drafts-generated
+    annotations:
+      summary: "No drafts generated despite new RSS items"
+      description: "New RSS items fetched but no drafts generated in 1h\nCheck draft generation pipeline and candidate selection logic."
+      impact: "Article 2.2: Generation pipeline broken"
+
+  # Draft Generation Queue Backlog
+  - alert: GXVISDraftGenerationQueueBacklog
+    expr: gxvis_draft_generation_queue_length > 100
+    for: 30m
+    labels:
+      severity: warning
+      team: backend
+      component: draft_generator
+    annotations:
+      summary: "Draft generation queue backlog"
+      description: "Queue length is {{ $value }} (threshold: 100)\nConsider scaling draft generation workers or investigating processing bottlenecks."
+
+#═════════════════════════════════════════════════════════════════
+# Database Alerts
+#═════════════════════════════════════════════════════════════════
+- name: gxvis_database_alerts
+  interval: 1m
+  rules:
+  # Database Query Error Rate
+  - alert: GXVISDBQueryErrorRate
+    expr: |
+      (
+        sum(rate(gxvis_db_queries_total{status="error"}[10m])) by (model)
+        /
+        sum(rate(gxvis_db_queries_total[10m])) by (model)
+      ) > 0.05
+    for: 5m
+    labels:
+      severity: critical
+      team: backend
+      component: database
+      runbook: https://docs.gxvis.com/runbooks/db-error-rate
+    annotations:
+      summary: "High database error rate for {{ $labels.model }}"
+      description: "{{ $labels.model }} has {{ $value | humanizePercentage }} query error rate\nCheck database connectivity and query syntax."
+      impact: "Article 12: Single Source of Truth (SSOT) access impaired"
+
+  # Slow Database Queries (P95 > 1s)
+  - alert: GXVISDBSlowQueries
+    expr: |
+      histogram_quantile(0.95,
+        sum(rate(gxvis_db_query_duration_seconds_bucket[10m])) by (operation, model, le)
+      ) > 1
+    for: 15m
+    labels:
+      severity: warning
+      team: backend
+      component: database
+    annotations:
+      summary: "Slow database queries for {{ $labels.model }}.{{ $labels.operation }}"
+      description: "P95 query duration is {{ $value }}s (threshold: 1s)\nConsider adding indexes or optimizing query patterns."
+
+  # Database Connection Pool Exhaustion
+  - alert: GXVISDBConnectionPoolExhausted
+    expr: gxvis_db_connection_pool_size{state="waiting"} > 5
+    for: 5m
+    labels:
+      severity: critical
+      team: backend
+      component: database
+      runbook: https://docs.gxvis.com/runbooks/db-connection-pool
+    annotations:
+      summary: "Database connection pool exhausted"
+      description: "{{ $value }} connections waiting in pool\nIncrease pool size or investigate connection leaks."
+
+#═════════════════════════════════════════════════════════════════
+# Background Job Alerts
+#═════════════════════════════════════════════════════════════════
+- name: gxvis_job_alerts
+  interval: 2m
+  rules:
+  # Job Execution Failures
+  - alert: GXVISJobExecutionFailureRate
+    expr: |
+      (
+        sum(rate(gxvis_job_executions_total{status="failed"}[1h])) by (job_type)
+        /
+        sum(rate(gxvis_job_executions_total[1h])) by (job_type)
+      ) > 0.2
+    for: 10m
+    labels:
+      severity: warning
+      team: backend
+      component: scheduler
+      runbook: https://docs.gxvis.com/runbooks/job-failure
+    annotations:
+      summary: "High job failure rate for {{ $labels.job_type }}"
+      description: "{{ $labels.job_type }} has {{ $value | humanizePercentage }} failure rate over 1h\nCheck job logs and dependencies."
+
+  # Job Not Running (Expected hourly execution)
+  - alert: GXVISJobNotRunning
+    expr: |
+      (time() - max(gxvis_job_executions_total) by (job_type) > 7200)
+      and
+      max(gxvis_job_executions_total offset 1d) by (job_type) > 0
+    for: 10m
+    labels:
+      severity: critical
+      team: backend
+      component: scheduler
+      runbook: https://docs.gxvis.com/runbooks/job-not-running
+    annotations:
+      summary: "Job {{ $labels.job_type }} not executed recently"
+      description: "{{ $labels.job_type }} has not executed in 2h\nCheck Cloud Scheduler and Pub/Sub triggers."
+      impact: "Article 5.1-5.4: Input pipeline interrupted"
+
+#═════════════════════════════════════════════════════════════════
+# Business Metrics Alerts
+#═════════════════════════════════════════════════════════════════
+- name: gxvis_business_alerts
+  interval: 5m
+  rules:
+  # No Pending Drafts (Possible generation issue)
+  - alert: GXVISNoPendingDrafts
+    expr: gxvis_drafts_by_status{status="pending"} == 0
+    for: 2h
+    labels:
+      severity: warning
+      team: product
+      component: business
+    annotations:
+      summary: "No pending drafts available for review"
+      description: "No pending drafts for 2h - check generation pipeline"
+      impact: "Article 2.2: No drafts available for human review"
+
+  # High Draft Rejection Rate
+  - alert: GXVISHighDraftRejectionRate
+    expr: |
+      (
+        sum(rate(gxvis_review_decisions_total{action="reject"}[24h]))
+        /
+        sum(rate(gxvis_review_decisions_total[24h]))
+      ) > 0.7
+    for: 1h
+    labels:
+      severity: warning
+      team: product
+      component: quality
+    annotations:
+      summary: "High draft rejection rate"
+      description: "{{ $value | humanizePercentage }} of drafts rejected in 24h\nReview generation quality and template effectiveness."
+      impact: "Article 17-21: Generation quality below expectations"
+
+#═════════════════════════════════════════════════════════════════
+# Infrastructure Alerts (USE Method)
+#═════════════════════════════════════════════════════════════════
+- name: gxvis_infrastructure_alerts
+  interval: 1m
+  rules:
+  # High Memory Usage (> 85%)
+  - alert: GXVISHighMemoryUsage
+    expr: |
+      (
+        process_resident_memory_bytes / (1024 * 1024 * 1024)
+      ) > 0.85 * 2  # Assuming 2GB Cloud Run instance
+    for: 10m
+    labels:
+      severity: warning
+      team: infrastructure
+      component: cloud_run
+    annotations:
+      summary: "High memory usage on {{ $labels.instance }}"
+      description: "Memory usage: {{ $value | humanize }}GB (threshold: 85% of 2GB)\nConsider increasing instance memory or optimizing application."
+
+  # High Event Loop Lag (Node.js specific)
+  - alert: GXVISHighEventLoopLag
+    expr: nodejs_eventloop_lag_seconds > 0.1
+    for: 5m
+    labels:
+      severity: warning
+      team: backend
+      component: nodejs
+    annotations:
+      summary: "High Node.js event loop lag"
+      description: "Event loop lag is {{ $value }}s (threshold: 100ms)\nCheck for blocking operations or CPU-intensive tasks."

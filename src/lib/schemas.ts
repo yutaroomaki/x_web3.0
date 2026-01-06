@@ -51,10 +51,13 @@ export const SourceQuerySchema = z.object({
   type: SourceTypeSchema.optional(),
 });
 
+export const LengthCategorySchema = z.enum(["short", "medium", "long"]);
+
 export const DraftQuerySchema = z.object({
   status: DraftStatusSchema.optional(),
   minScore: z.coerce.number().int().min(0).max(100).optional(),
-  limit: z.coerce.number().int().min(1).max(100).optional().default(50),
+  lengthCategory: LengthCategorySchema.optional(),
+  limit: z.coerce.number().int().min(1).max(500).optional().default(200),
   offset: z.coerce.number().int().min(0).optional().default(0),
 });
 

@@ -1,0 +1,16 @@
+# GXVIS Grafana Dashboard Provisioning
+# Automatically loads dashboards from /etc/grafana/dashboards
+
+apiVersion: 1
+
+providers:
+  - name: 'GXVIS Dashboards'
+    orgId: 1
+    folder: 'GXVIS'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/dashboards
+      foldersFromFilesStructure: false

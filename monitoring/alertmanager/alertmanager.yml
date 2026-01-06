@@ -1,0 +1,253 @@
+# GXVIS Alertmanager Configuration
+# Alert routing, grouping, and notification channels
+
+global:
+  resolve_timeout: 5m
+  # Slack webhook URL (set via environment variable or Secret Manager)
+  slack_api_url: '{{ env "SLACK_WEBHOOK_URL" }}'
+
+# Templates for notifications
+templates:
+- '/etc/alertmanager/templates/*.tmpl'
+
+# Routing tree
+route:
+  group_by: ['alertname', 'service', 'component']
+  group_wait: 10s
+  group_interval: 5m
+  repeat_interval: 4h
+  receiver: 'default'
+
+  # Child routes with specific matchers
+  routes:
+  #─────────────────────────────────────────────────────────────
+  # Critical alerts → Slack + PagerDuty (if configured)
+  #─────────────────────────────────────────────────────────────
+  - matchers:
+    - severity = critical
+    receiver: 'critical-alerts'
+    group_wait: 10s
+    group_interval: 2m
+    repeat_interval: 2h
+    routes:
+    # SLO exhausted alerts → Escalate to SRE lead
+    - matchers:
+      - slo =~ ".*"
+      receiver: 'slo-critical'
+      repeat_interval: 1h
+
+  #─────────────────────────────────────────────────────────────
+  # Warning alerts → Slack only
+  #─────────────────────────────────────────────────────────────
+  - matchers:
+    - severity = warning
+    receiver: 'warning-alerts'
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 12h
+
+  #─────────────────────────────────────────────────────────────
+  # Team-specific routing
+  #─────────────────────────────────────────────────────────────
+  - matchers:
+    - team = backend
+    receiver: 'backend-team'
+    routes:
+    # Draft generation failures → High priority
+    - matchers:
+      - component = draft_generator
+      receiver: 'backend-team-high-priority'
+      repeat_interval: 2h
+
+  - matchers:
+    - team = infrastructure
+    receiver: 'infrastructure-team'
+
+  - matchers:
+    - team = sre
+    receiver: 'sre-team'
+
+  - matchers:
+    - team = product
+    receiver: 'product-team'
+
+# Inhibition rules (suppress alerts based on other alerts)
+inhibit_rules:
+# Suppress warning alerts if critical alert is firing
+- source_matchers:
+  - severity = critical
+  target_matchers:
+  - severity = warning
+  equal: ['alertname', 'service']
+
+# Suppress component alerts if service is down
+- source_matchers:
+  - alertname = GXVISServiceDown
+  target_matchers:
+  - alertname =~ "GXVIS.*"
+  equal: ['service']
+
+# Suppress individual feed alerts if overall RSS fetch is failing
+- source_matchers:
+  - alertname = GXVISRSSFetchBurnFast
+  target_matchers:
+  - alertname = GXVISRSSFetchFailureRate
+  equal: ['feed_name']
+
+# Suppress draft generation alerts if service is down
+- source_matchers:
+  - alertname = GXVISServiceDown
+  target_matchers:
+  - component = draft_generator
+
+# Receivers
+receivers:
+#─────────────────────────────────────────────────────────────
+# Default receiver (low priority)
+#─────────────────────────────────────────────────────────────
+- name: 'default'
+  slack_configs:
+  - channel: '#gxvis-alerts'
+    title: '{{ range .Alerts }}{{ .Annotations.summary }}\n{{ end }}'
+    text: |
+      {{ range .Alerts }}
+      *Description:* {{ .Annotations.description }}
+      *Severity:* {{ .Labels.severity }}
+      {{ if .Annotations.runbook }}*Runbook:* {{ .Annotations.runbook }}{{ end }}
+      {{ if .Annotations.dashboard }}*Dashboard:* {{ .Annotations.dashboard }}{{ end }}
+      {{ end }}
+    send_resolved: true
+    color: '{{ if eq .Status "firing" }}danger{{ else }}good{{ end }}'
+
+#─────────────────────────────────────────────────────────────
+# Critical alerts
+#─────────────────────────────────────────────────────────────
+- name: 'critical-alerts'
+  slack_configs:
+  - channel: '#gxvis-incidents'
+    username: 'GXVIS AlertManager'
+    icon_emoji: ':rotating_light:'
+    title: ':rotating_light: CRITICAL: {{ .GroupLabels.alertname }}'
+    title_link: '{{ if .CommonAnnotations.dashboard }}{{ .CommonAnnotations.dashboard }}{{ end }}'
+    text: |
+      {{ range .Alerts }}
+      *Alert:* {{ .Annotations.summary }}
+      *Description:* {{ .Annotations.description }}
+      {{ if .Annotations.impact }}*Impact:* {{ .Annotations.impact }}{{ end }}
+      {{ if .Annotations.runbook }}*Runbook:* {{ .Annotations.runbook }}{{ end }}
+      *Severity:* {{ .Labels.severity }} | *Component:* {{ .Labels.component }} | *Team:* {{ .Labels.team }}
+      *Started:* {{ .StartsAt.Format "2006-01-02 15:04:05 MST" }}
+      {{ end }}
+    send_resolved: true
+    color: '{{ if eq .Status "firing" }}danger{{ else }}good{{ end }}'
+  # Uncomment to enable PagerDuty
+  # pagerduty_configs:
+  # - service_key: '{{ env "PAGERDUTY_SERVICE_KEY" }}'
+  #   description: "{{ .GroupLabels.alertname }}: {{ .CommonAnnotations.summary }}"
+  #   severity: "{{ .CommonLabels.severity }}"
+
+#─────────────────────────────────────────────────────────────
+# SLO critical alerts (escalate to SRE lead)
+#─────────────────────────────────────────────────────────────
+- name: 'slo-critical'
+  slack_configs:
+  - channel: '#sre-slo-alerts'
+    username: 'GXVIS SLO Monitor'
+    icon_emoji: ':chart_with_downwards_trend:'
+    title: ':chart_with_downwards_trend: SLO BREACH: {{ .GroupLabels.slo }}'
+    text: |
+      {{ range .Alerts }}
+      *Alert:* {{ .Annotations.summary }}
+      *SLO Target:* {{ .Labels.slo_target }} | *Window:* {{ .Labels.window }}
+      *Description:* {{ .Annotations.description }}
+      {{ if .Annotations.impact }}*Impact:* {{ .Annotations.impact }}{{ end }}
+      {{ if .Annotations.runbook }}*Runbook:* {{ .Annotations.runbook }}{{ end }}
+      *Started:* {{ .StartsAt.Format "2006-01-02 15:04:05 MST" }}
+      {{ end }}
+    send_resolved: true
+    color: 'danger'
+
+#─────────────────────────────────────────────────────────────
+# Warning alerts
+#─────────────────────────────────────────────────────────────
+- name: 'warning-alerts'
+  slack_configs:
+  - channel: '#gxvis-alerts'
+    username: 'GXVIS AlertManager'
+    icon_emoji: ':warning:'
+    title: ':warning: {{ .GroupLabels.alertname }}'
+    text: |
+      {{ range .Alerts }}
+      *Alert:* {{ .Annotations.summary }}
+      *Description:* {{ .Annotations.description }}
+      {{ if .Annotations.runbook }}*Runbook:* {{ .Annotations.runbook }}{{ end }}
+      *Component:* {{ .Labels.component }} | *Team:* {{ .Labels.team }}
+      {{ end }}
+    send_resolved: true
+    color: 'warning'
+
+#─────────────────────────────────────────────────────────────
+# Team-specific receivers
+#─────────────────────────────────────────────────────────────
+- name: 'backend-team'
+  slack_configs:
+  - channel: '#backend-alerts'
+    title: 'Backend Alert: {{ .GroupLabels.alertname }}'
+    text: |
+      {{ range .Alerts }}
+      *{{ .Annotations.summary }}*
+      {{ .Annotations.description }}
+      {{ if .Annotations.runbook }}Runbook: {{ .Annotations.runbook }}{{ end }}
+      {{ end }}
+    send_resolved: true
+
+- name: 'backend-team-high-priority'
+  slack_configs:
+  - channel: '#backend-alerts'
+    username: 'GXVIS Backend Monitor'
+    icon_emoji: ':fire:'
+    title: ':fire: HIGH PRIORITY: {{ .GroupLabels.alertname }}'
+    text: |
+      {{ range .Alerts }}
+      *Alert:* {{ .Annotations.summary }}
+      *Description:* {{ .Annotations.description }}
+      {{ if .Annotations.impact }}*Impact:* {{ .Annotations.impact }}{{ end }}
+      {{ if .Annotations.runbook }}*Runbook:* {{ .Annotations.runbook }}{{ end }}
+      {{ end }}
+    send_resolved: true
+    color: 'danger'
+
+- name: 'infrastructure-team'
+  slack_configs:
+  - channel: '#infra-alerts'
+    title: 'Infrastructure Alert: {{ .GroupLabels.alertname }}'
+    text: |
+      {{ range .Alerts }}
+      {{ .Annotations.summary }}
+      {{ .Annotations.description }}
+      {{ end }}
+    send_resolved: true
+
+- name: 'sre-team'
+  slack_configs:
+  - channel: '#sre-alerts'
+    title: 'SRE Alert: {{ .GroupLabels.alertname }}'
+    text: |
+      {{ range .Alerts }}
+      *{{ .Annotations.summary }}*
+      {{ .Annotations.description }}
+      {{ if .Labels.slo }}SLO: {{ .Labels.slo }} (Target: {{ .Labels.slo_target }}){{ end }}
+      {{ end }}
+    send_resolved: true
+
+- name: 'product-team'
+  slack_configs:
+  - channel: '#product-alerts'
+    title: 'Product Metrics Alert: {{ .GroupLabels.alertname }}'
+    text: |
+      {{ range .Alerts }}
+      {{ .Annotations.summary }}
+      {{ .Annotations.description }}
+      {{ end }}
+    send_resolved: true
+    color: 'warning'
